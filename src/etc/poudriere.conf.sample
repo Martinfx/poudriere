@@ -397,6 +397,9 @@ DISTFILES_CACHE=/usr/ports/distfiles
 # be fetched.
 # Default: "*"
 #PACKAGE_FETCH_WHITELIST="gcc* rust llvm*"
+# When cross-building with QEMU, ports which are IGNOREd only because of
+# QEMU_EMULATING (such as lang/rust) are still eligible to be fetched.
+# They are only IGNOREd if no package could be fetched for them.
 
 # If the ports tree is a git checkout then it is inspected for whether it
 # is "dirty". This information is stored in a package annotation to help

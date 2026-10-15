@@ -28,7 +28,7 @@
 .\"
 .\" Note: The date here should be updated whenever a non-trivial
 .\" change is made to the manual page.
-.Dd November 10, 2025
+.Dd October 15, 2026
 .Dt POUDRIERE-BULK 8
 .Os
 .Sh NAME
@@ -215,6 +215,15 @@ and
 in
 .Pa poudriere.conf.sample .
 The entries in the lists will be matched against package names without versions.
+.Pp
+When cross-building with QEMU, ports which are only marked
+.Va IGNORE
+because
+.Va QEMU_EMULATING
+is defined, such as
+.Pa lang/rust ,
+are still fetched if a matching package is available.
+If no package can be fetched for them they are ignored as usual.
 .It Fl C
 Clean only the packages specified on the command line or in the file given by
 .Fl f Ar file .

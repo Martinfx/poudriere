@@ -7123,7 +7123,7 @@ deps_fetch_vars() {
 	local _prefix _pkgname_var _pdeps_var _bdeps_var _rdeps_var
 	local _depend_specials= _build_as_non_root= _need_root=
 	local dist_subdir dist_allfiles
-	local port_flags
+	local port_flags _native_ignore
 
 	originspec_decode "${originspec}" origin _origin_flavor _origin_subpkg
 	# If we were passed in a FLAVOR then we better have already looked up
@@ -7229,6 +7229,36 @@ deps_fetch_vars() {
 	*)
 		msg_error "${COLOR_PORT}${origin}${COLOR_RESET} has incorrect CATEGORIES, first should be '${origin%%/*}'.  Please contact maintainer of the port to fix this."
 		return 1
+	esac
+
+	# Some ports, such as lang/rust, set IGNORE when QEMU_EMULATING is
+	# defined as they cannot be built under emulation.  When package
+	# fetching is enabled keep them queued so that a prebuilt package
+	# may be fetched for them instead.  trim_qemu_ignored() will
+	# IGNORE them after all if no package was fetched.
+	case "${QEMU_EMULATING:-0}.${_ignore:+set}.${PACKAGE_FETCH_BRANCH:+set}" in
+	1.set.set)
+		if patternlist_match "${PACKAGE_FETCH_WHITELIST-}" \
+		    "${_pkgname%-*}" &&
+		    ! patternlist_match "${PACKAGE_FETCH_BLACKLIST-}" \
+		    "${_pkgname%-*}" &&
+		    _native_ignore="$(
+			unset QEMU_EMULATING
+			port_var_fetch_originspec "${originspec}" \
+			    ${port_flags-} \
+			    IGNORE _native_ignore &&
+			    printf "%s\n" "${_native_ignore}"
+		    )"; then
+			case "${_native_ignore}" in
+			"")
+				msg "Package fetch: ${COLOR_PORT}${originspec}${COLOR_RESET} is IGNORED only under QEMU (${_ignore}), will try to fetch a package for it"
+				shash_set pkgname-qemu_ignore "${_pkgname}" \
+				    "${_ignore}"
+				_ignore=
+				;;
+			esac
+		fi
+		;;
 	esac
 
 	setvar "${pkgname_var}" "${_pkgname}"
@@ -7392,7 +7422,7 @@ ensure_pkg_installed() {
 		injail_ver="${injail_ver%.*}"
 		injail_ver="${injail_ver%_*}"
 		host_ver="$(/usr/local/sbin/pkg-static -v)"
-		case "${host_var}" in
+		case "${host_ver}" in
 		"${injail_ver}")
 			cp -f /usr/local/sbin/pkg-static "${mnt:?}/${PKG_BIN:?}"
 			return 0
@@ -10187,6 +10217,36 @@ trim_ignored_pkg() {
 	clean_pool "run" "${pkgname}" "${originspec}" "ignored"
 }
 
+# Ports that are only IGNOREd under QEMU were kept queued by
+# deps_fetch_vars() so that download_from_repo() could fetch a package
+# for them.  IGNORE the ones which do not have a package.
+trim_qemu_ignored() {
+	[ $# -eq 0 ] || eargs trim_qemu_ignored
+	local pkgname originspec _rdep _ignored ignore
+
+	case "${QEMU_EMULATING:-0}.${PACKAGE_FETCH_BRANCH:+set}" in
+	1.set) ;;
+	*) return 0 ;;
+	esac
+
+	while mapfile_read_loop_redir pkgname originspec _rdep _ignored; do
+		case "${pkgname}" in
+		"") break ;;
+		esac
+		shash_get pkgname-qemu_ignore "${pkgname}" ignore || continue
+		pkgqueue_contains "build" "${pkgname}" || continue
+		# Fetched now or in a previous build.
+		if [ -f "${PACKAGES:?}/All/${pkgname:?}.${PKG_EXT}" ]; then
+			continue
+		fi
+		trim_ignored_pkg "${pkgname}" "${originspec}" "${ignore}"
+	done <<-EOF
+	$(cat "${MASTER_DATADIR:?}/all_pkgs_not_ignored")
+	EOF
+	# Update ignored/skipped stats
+	update_stats 2>/dev/null || :
+}
+
 # PWD will be MASTER_DATADIR after this
 prepare_ports() {
 	local pkg
@@ -10428,6 +10488,7 @@ prepare_ports() {
 			trim_ignored
 		fi
 		download_from_repo
+		trim_qemu_ignored
 		if ! ensure_pkg_installed; then
 			delete_all_pkgs "pkg bootstrap missing: unable to inspect existing packages"
 		fi
@@ -10480,6 +10541,7 @@ prepare_ports() {
 			    pkgname-run_deps \
 			    pkgname-lib_deps \
 			    pkgname-trim_ignored \
+			    pkgname-qemu_ignore \
 			    pkgname-skipped \
 			    ; do
 				shash_remove_var "${shash_bucket}" || :
