@@ -10239,6 +10239,7 @@ trim_qemu_ignored() {
 		if [ -f "${PACKAGES:?}/All/${pkgname:?}.${PKG_EXT}" ]; then
 			continue
 		fi
+		msg_warn "Package fetch: No package fetched for ${COLOR_PORT}${pkgname}${COLOR_RESET} which cannot be built under QEMU. Rerun with -v to see the reason."
 		trim_ignored_pkg "${pkgname}" "${originspec}" "${ignore}"
 	done <<-EOF
 	$(cat "${MASTER_DATADIR:?}/all_pkgs_not_ignored")
