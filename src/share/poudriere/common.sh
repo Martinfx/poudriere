@@ -4690,7 +4690,7 @@ download_from_repo() {
 	local remote_all_annotations remote_all_abi remote_all_prefix
 	local remote_all_cats missing_pkgs pkgbase cnt
 	local remote_pkg_ver local_pkg_name local_pkg_ver
-	local packages_rel
+	local packages_rel pkg_query_bin
 	local -
 
 	case "${PACKAGE_FETCH_BRANCH-}" in
@@ -4818,29 +4818,48 @@ download_from_repo() {
 		;;
 	esac
 
+	abi="$(injail "${pkg_bin}" config ABI)"
+	# Querying the whole remote catalogue with an emulated pkg is very
+	# slow.  Use the host's static pkg instead if it is the same version,
+	# so it won't touch the pkg databases in ways the jail's pkg can't
+	# handle, and gives the same answers.
+	pkg_query_bin="${pkg_bin}"
+	if [ "${QEMU_EMULATING}" -eq 1 ] &&
+	    [ -x /usr/local/sbin/pkg-static ] &&
+	    [ "$(/usr/local/sbin/pkg-static -v)" = \
+	    "$(injail "${pkg_bin}" -v)" ] &&
+	    cp -f /usr/local/sbin/pkg-static \
+	    "${MASTERMNT:?}/tmp/pkg-static-native" &&
+	    [ "$(injail /tmp/pkg-static-native config ABI 2>/dev/null)" = \
+	    "${abi}" ] &&
+	    [ "$(injail /tmp/pkg-static-native rquery -U %v \
+	    "${P_PKG_PKGBASE:?}" 2>/dev/null)" = "${remote_pkg_ver}" ]; then
+		msg "Package fetch: Using host pkg-static for repository queries"
+		pkg_query_bin="/tmp/pkg-static-native"
+	fi
+
 	# pkg insists on creating a local.sqlite even if we won't use it
 	# (like pkg rquery -U), and it uses various locking that isn't needed
 	# here. Grab all the options for comparison.
 	remote_all_options=$(mktemp -t remote_all_options)
-	injail ${pkg_bin} rquery -U -e '%#O > 0' '%n %Ok %Ov' > "${remote_all_options}"
+	injail ${pkg_query_bin} rquery -U -e '%#O > 0' '%n %Ok %Ov' > "${remote_all_options}"
 	remote_all_pkgs=$(mktemp -t remote_all_pkgs)
-	injail ${pkg_bin} rquery -U '%n %n-%v %?O' > "${remote_all_pkgs}"
+	injail ${pkg_query_bin} rquery -U '%n %n-%v %?O' > "${remote_all_pkgs}"
 	remote_all_deps=$(mktemp -t remote_all_deps)
-	injail ${pkg_bin} rquery -U -e '%#d > 0' '%n %dn-%dv' > "${remote_all_deps}"
+	injail ${pkg_query_bin} rquery -U -e '%#d > 0' '%n %dn-%dv' > "${remote_all_deps}"
 	remote_all_annotations=$(mktemp -t remote_all_annotations)
 	remote_all_cats=$(mktemp -t remote_all_cats)
 	case "${IGNORE_OSVERSION-}" in
 	"yes") ;;
 	*)
-		injail ${pkg_bin} rquery -U -e '%#A > 0' '%n %At %Av' > "${remote_all_annotations}"
-		injail ${pkg_bin} rquery -U '%n %C' > "${remote_all_cats}"
+		injail ${pkg_query_bin} rquery -U -e '%#A > 0' '%n %At %Av' > "${remote_all_annotations}"
+		injail ${pkg_query_bin} rquery -U '%n %C' > "${remote_all_cats}"
 		;;
 	esac
-	abi="$(injail "${pkg_bin}" config ABI)"
 	remote_all_abi=$(mktemp -t remote_all_abi)
-	injail ${pkg_bin} rquery -U '%n %q' > "${remote_all_abi}"
+	injail ${pkg_query_bin} rquery -U '%n %q' > "${remote_all_abi}"
 	remote_all_prefix=$(mktemp -t remote_all_prefix)
-	injail ${pkg_bin} rquery -U '%n %p' > "${remote_all_prefix}"
+	injail ${pkg_query_bin} rquery -U '%n %p' > "${remote_all_prefix}"
 
 	parallel_start || err 1 "parallel_start"
 	wantedpkgs=$(mktemp -t wantedpkgs)
