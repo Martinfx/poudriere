@@ -3708,6 +3708,19 @@ setup_xdev() {
 			bin/hostname bin/ln bin/ls bin/mkdir bin/mv \
 			bin/realpath bin/rm bin/rmdir bin/sleep \
 			sbin/sha256 sbin/sha512 sbin/md5 sbin/sha1"
+	# More static tools native-xtools builds which configure scripts and
+	# extracting use heavily.  Not sysctl(8) or ps(8) as QEMU translates
+	# hw.machine and friends only for emulated binaries.
+	HLINK_FILES="${HLINK_FILES} \
+			usr/bin/grep usr/bin/egrep usr/bin/fgrep \
+			usr/bin/zgrep usr/bin/zegrep usr/bin/zfgrep \
+			usr/bin/tr usr/bin/cmp usr/bin/uniq usr/bin/basename \
+			usr/bin/mktemp usr/bin/true usr/bin/strings \
+			usr/bin/xz usr/bin/unxz usr/bin/xzcat \
+			usr/bin/lzma usr/bin/unlzma usr/bin/lzcat \
+			usr/bin/bzip2 usr/bin/bunzip2 usr/bin/bzcat \
+			usr/bin/unzip usr/bin/ar usr/bin/ranlib usr/bin/nm \
+			usr/bin/lex usr/bin/flex usr/bin/yacc"
 
 	# Endian issues on mips/mips64 are not handling exec of 64bit shells
 	# from emulated environments correctly.  This works just fine on ARM
@@ -3717,7 +3730,7 @@ setup_xdev() {
 
 	for file in ${HLINK_FILES}; do
 		if [ -f "${mnt:?}/nxb-bin/${file}" ]; then
-			unlink "${mnt:?}/${file}"
+			rm -f "${mnt:?}/${file}"
 			ln "${mnt:?}/nxb-bin/${file}" "${mnt:?}/${file}"
 		fi
 	done
