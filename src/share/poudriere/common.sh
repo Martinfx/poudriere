@@ -10489,7 +10489,6 @@ prepare_ports() {
 			trim_ignored
 		fi
 		download_from_repo
-		trim_qemu_ignored
 		if ! ensure_pkg_installed; then
 			delete_all_pkgs "pkg bootstrap missing: unable to inspect existing packages"
 		fi
@@ -10524,6 +10523,9 @@ prepare_ports() {
 		delete_stale_symlinks_and_empty_dirs
 		delete_stale_pkg_cache
 		download_from_repo_post_delete
+		# After the sanity checks above which may delete fetched
+		# packages.
+		trim_qemu_ignored
 		bset status "sanity:"
 
 		# Cleanup cached data that is no longer needed.
